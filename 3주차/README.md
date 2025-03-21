@@ -83,6 +83,7 @@
 cat 명령어를 사용해 학번과 이름을 입력 받아서 출력하는 프로그램을 만들어 보자.
 
 1. `cat > test.c` 명령어를 사용해 새로운 test.c 파일을 생성해 입력 상태로 변환
+
 2. 코드 내용 작성
 
 ```c
@@ -103,13 +104,14 @@ int main()
 }
 ```
 
-1. `gcc test.c`를 통해 test.c파일 컴파일
-2. `ls`로 결과물 a.out파일의 생성을 확인
+3. `gcc test.c`를 통해 test.c파일 컴파일
+
+4. `ls`로 결과물 a.out파일의 생성을 확인
 
 ![Image](https://github.com/user-attachments/assets/fbf84f8c-803d-45b0-9b9e-7c82e2910598)
 
 
-1. `./a.out` 결과물 실행
+5. `./a.out` 결과물 실행
 
 ### 실행 결과
 
