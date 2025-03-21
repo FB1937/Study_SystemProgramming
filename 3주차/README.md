@@ -106,10 +106,10 @@ int main()
 1. `gcc test.c`를 통해 test.c파일 컴파일
 2. `ls`로 결과물 a.out파일의 생성을 확인
 
-![image.png](attachment:67fbedd5-86eb-4212-a06d-331fc65e0eb0:ls.png)
+![Image](https://github.com/user-attachments/assets/fbf84f8c-803d-45b0-9b9e-7c82e2910598)
 
 1. `./a.out` 결과물 실행
 
 ### 실행 결과
 
-![image.png](attachment:10d1ea4d-2c70-4ee7-bbb2-81b505b54322:resol.png)
+![Image](https://github.com/user-attachments/assets/d99ad03a-ee17-4f5b-a0f4-278766e793f1)
