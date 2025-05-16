@@ -1,292 +1,293 @@
-## 📘 6장. 프로세스
+## 6장 파일 시스템
 
 ---
 
-### ✅ 6.1 프로세스 기본 개념
+### 6.1 파일 시스템 구현
 
-### ▶ 프로세스란?
+유닉스(Unix) 파일 시스템의 기본 구조는 다음 네 부분으로 구성됩니다.
 
-- 실행 중인 프로그램
-- 각 프로세스는 고유한 **PID (Process ID)** 를 가짐
-- 부모-자식 구조 (프로세스는 부모 프로세스에 의해 생성됨)
-
-### ▶ 프로세스 종류
-
-- **시스템 프로세스**: 부팅 시 자동 실행 (데몬 등)
-- **사용자 프로세스**: 사용자가 직접 실행한 프로그램
+- **부트 블록(Boot Block)**
+    - 파일 시스템의 가장 첫 부분(첫 번째 섹터)
+    - 부팅 시 사용되는 부트스트랩 코드 저장 영역
+- **슈퍼 블록(Super Block)**
+    - 파일 시스템 전체 상태 정보 저장
+    - 예: 전체 블록 수, 사용 가능한 i-노드 수, 블록 크기, 사용 중인 블록 수 등
+- **i-리스트(i-list)**
+    - 파일 하나하나에 대응하는 i-노드(i-node)들의 리스트
+    - 각 i-노드는 파일에 대한 메타데이터를 담음
+- **데이터 블록(Data Blocks)**
+    - 실제 파일 데이터가 저장되는 블록들
 
 ---
 
-### ✅ 프로세스 상태 보기 - `ps` 명령어
+### 파일 시스템 구조 그림 (단순화)
 
-### ▶ 기본 사용법
-
-```bash
-$ ps
-$ ps -f
-$ ps -ef | more
+```
+부트 블록 | 슈퍼 블록 | i-리스트 (i-node 배열) | 데이터 블록 ...
 
 ```
 
-### ▶ 출력 항목 설명
+---
 
-| 항목 | 설명 |
+### ext4 파일 시스템
+
+- 리눅스가 주로 쓰는 확장 유닉스 파일 시스템(ext4)은 훨씬 복잡하지만
+- 기본 개념은 부트 블록, 슈퍼 블록, i-리스트, 데이터 블록으로 구성됨
+- 1 엑사바이트(EB, 1024페타바이트) 이상 볼륨, 16TB 이상 파일 지원 가능
+
+---
+
+### i-노드 (i-node)
+
+- 각 파일은 하나의 i-노드를 가짐
+- i-노드는 파일의 모든 메타 정보 포함
+    - 파일 타입(일반 파일, 디렉터리, 장치 파일 등)
+    - 파일 크기
+    - 접근 권한
+    - 소유자 및 그룹
+    - 최종 접근 및 수정 시간
+    - 데이터 블록 포인터 등
+
+---
+
+### i-노드 내 데이터 블록 포인터
+
+- 직접 블록 포인터 12개
+- 단일 간접 블록 포인터 1개
+- 이중 간접 블록 포인터 1개
+- 삼중 간접 블록 포인터 1개
+
+이를 통해 대용량 파일도 관리 가능
+
+---
+
+### 6.2 파일 입출력 구현
+
+파일 입출력 시 커널 내부에 다음과 같은 자료구조가 존재합니다.
+
+- **파일 디스크립터 배열(Fd array)**
+    - 프로세스마다 존재
+    - 열린 파일 테이블 엔트리를 가리킴
+    - 프로세스가 파일을 접근할 때 사용하는 인덱스 번호
+- **열린 파일 테이블(Open File Table)**
+    - 커널 전역 자료구조
+    - 현재 열린 모든 파일 목록
+    - 각 항목에 파일 상태, 현재 파일 위치, i-node 포인터 포함
+- **동적 i-노드 테이블(Active i-node Table)**
+    - 열린 파일의 i-node 정보를 메모리에 저장
+    - 파일 접근 시 빠른 참조 가능
+
+---
+
+### 파일 열기(open) 예시
+
+```c
+int fd = open("file", O_RDONLY);
+
+```
+
+- 프로세스의 파일 디스크립터 배열에 열린 파일 정보 연결
+- 열린 파일 테이블과 동적 i-노드 테이블에 관련 항목 생성
+- refcnt (참조 카운트) 1로 설정
+
+---
+
+### dup(), dup2() 예제
+
+- 동일 파일을 여러 fd에서 공유할 때 사용
+- 열린 파일 테이블의 refcnt 증가
+
+```c
+int fd2 = dup(fd);
+
+```
+
+---
+
+### 6.3 파일 상태 정보
+
+- `stat()` 시스템 호출로 파일 상태 정보 가져옴
+- i-노드에 저장된 상태 정보 반환
+
+```c
+#include <sys/stat.h>
+int stat(const char *filename, struct stat *buf);
+
+```
+
+- 주요 `struct stat` 필드
+
+| 필드 | 설명 |
 | --- | --- |
-| UID | 프로세스를 실행한 사용자 ID |
-| PID | 프로세스 ID |
-| PPID | 부모 프로세스 ID |
-| C | CPU 사용량 우선순위 |
-| STIME | 시작 시간 |
-| TTY | 시작된 터미널 |
-| TIME | 사용한 CPU 시간 |
-| CMD | 명령어 |
+| st_mode | 파일 타입과 권한 |
+| st_ino | i-node 번호 |
+| st_dev | 장치 번호 |
+| st_nlink | 링크 수 |
+| st_uid | 소유자 ID |
+| st_gid | 그룹 ID |
+| st_size | 파일 크기 |
+| st_atime | 마지막 접근 시간 |
+| st_mtime | 마지막 수정 시간 |
+| st_ctime | 상태 변경 시간 |
 
 ---
 
-### ✅ 특정 프로세스 검색 - `pgrep`
+### 파일 타입 검사 매크로
 
-### ▶ 사용법
-
-```bash
-$ pgrep [옵션] [패턴]
-
-```
-
-### ▶ 주요 옵션
-
-| 옵션 | 설명 |
-| --- | --- |
-| -l | PID + 프로세스 이름 출력 |
-| -f | 전체 명령어 경로 포함 출력 |
-| -n | 가장 최근 실행된 프로세스만 출력 |
-| -x | 정확히 일치하는 것만 출력 |
-
-### ▶ 예시
-
-```bash
-$ pgrep sshd
-$ pgrep -l sshd
-$ pgrep -ln sshd
-
-```
+- `S_ISREG(mode)` : 일반 파일
+- `S_ISDIR(mode)` : 디렉터리
+- `S_ISCHR(mode)` : 문자 장치
+- `S_ISBLK(mode)` : 블록 장치
+- `S_ISFIFO(mode)`: FIFO(파이프)
+- `S_ISLNK(mode)` : 심볼릭 링크
+- `S_ISSOCK(mode)`: 소켓
 
 ---
 
-## ✅ 6.2 작업 제어
+### 예제: 파일 타입 출력 프로그램 (ftype.c)
 
-### ▶ 후면 실행
+```c
+#include <sys/stat.h>
+#include <stdio.h>
 
-```bash
-$ 명령어 &
-
-```
-
-예:
-
-```bash
-$ sleep 10 &
+int main(int argc, char *argv[]) {
+  struct stat buf;
+  for (int i=1; i<argc; i++) {
+    if (lstat(argv[i], &buf) < 0) {
+      perror("lstat");
+      continue;
+    }
+    if (S_ISREG(buf.st_mode)) printf("%s : 일반 파일\n", argv[i]);
+    else if (S_ISDIR(buf.st_mode)) printf("%s : 디렉터리\n", argv[i]);
+    else if (S_ISCHR(buf.st_mode)) printf("%s : 문자 장치 파일\n", argv[i]);
+    else if (S_ISBLK(buf.st_mode)) printf("%s : 블록 장치 파일\n", argv[i]);
+    else if (S_ISFIFO(buf.st_mode)) printf("%s : FIFO 파일\n", argv[i]);
+    else if (S_ISLNK(buf.st_mode)) printf("%s : 심볼릭 링크\n", argv[i]);
+    else if (S_ISSOCK(buf.st_mode)) printf("%s : 소켓\n", argv[i]);
+    else printf("%s : 알 수 없는 파일 타입\n", argv[i]);
+  }
+  return 0;
+}
 
 ```
 
 ---
 
-### ▶ 쉘 재우기 (일시정지)
+### 6.4 파일 권한
 
-```bash
-$ sleep 5
-$ (echo 시작; sleep 5; echo 끝)
+- 소유자(owner), 그룹(group), 기타(others) 3가지 대상별 권한 분류
+- 권한: 읽기(r), 쓰기(w), 실행(x)
+- `chmod()` 함수로 변경 가능
 
-```
-
----
-
-### ▶ 강제 종료 및 일시 정지
-
-| 키 조합 | 기능 |
-| --- | --- |
-| Ctrl-C | 강제 종료 (`SIGINT`) |
-| Ctrl-Z | 일시 정지 (`SIGTSTP`) |
-
-예:
-
-```bash
-$ (sleep 100; echo DONE)
-^C  # 종료
+```c
+int chmod(const char *path, mode_t mode);
 
 ```
 
 ---
 
-### ▶ 전면/후면 전환
+### 접근 및 수정 시간 변경: utime()
 
-### ▶ 전면 → 후면: `Ctrl-Z` → `bg`
+- `utime()` 시스템 호출로 파일의 최종 접근시간과 수정시간 변경 가능
+- `times`가 NULL이면 현재 시간으로 설정
 
-```bash
-$ (sleep 100; echo DONE)
-^Z
-$ bg %1
-
-```
-
-### ▶ 후면 → 전면: `fg`
-
-```bash
-$ fg %1
+```c
+#include <utime.h>
+int utime(const char *filename, const struct utimbuf *times);
 
 ```
 
 ---
 
-### ▶ 후면 작업 입출력 리다이렉션
+### 6.5 디렉터리
 
-```bash
-$ find . -name test.c -print > find.txt &
-$ find . -name test.c -print | mail chang &
-$ 명령어 < 입력파일 &
+- 디렉터리는 파일 이름과 i-node 번호를 저장하는 특수 파일
+- `opendir()`, `readdir()`, `closedir()` API로 디렉터리 접근 가능
 
-```
-
----
-
-## ✅ 6.3 프로세스 제어
-
-### ▶ 프로세스 종료 - `kill`
-
-```bash
-$ (sleep 100; echo done) &
-$ kill 8320  # PID 사용
-$ kill %1    # 작업 번호 사용
+```c
+DIR *opendir(const char *path);
+struct dirent *readdir(DIR *dp);
+int closedir(DIR *dp);
 
 ```
 
 ---
 
-### ▶ 프로세스 대기 - `wait`
+### 디렉터리 엔트리 구조체 (dirent)
 
-```bash
-$ (sleep 10; echo 1번 끝) &
-$ echo 2번 끝; wait 1231; echo 3번 끝
-
-```
-
-- 프로세스 번호를 지정하지 않으면 **모든 자식 프로세스를 기다림**
-
----
-
-### ▶ 프로세스 우선순위 - `nice`, `renice`
-
-| 명령어 | 설명 |
-| --- | --- |
-| `nice` | 새로운 프로세스를 특정 우선순위로 실행 |
-| `renice` | 실행 중인 프로세스의 우선순위 변경 |
-
-```bash
-$ nice -n 10 ps -ef
-
-$ renice -n 5 -p 1234  # PID 기준
-
-```
-
-nice 값 범위: **-20 (높음) ~ 19 (낮음)**
-
----
-
-## ✅ 6.4 사용자 ID와 프로세스
-
-### ▶ ID 개념
-
-| 구분 | 설명 |
-| --- | --- |
-| 실제 사용자 ID | 프로세스를 시작한 사용자의 ID |
-| 유효 사용자 ID | 현재 권한 판별 기준, 파일 접근 등 |
-
-```bash
-$ id
-$ echo $UID $EUID
+```c
+struct dirent {
+  ino_t d_ino;        // i-node 번호
+  char d_name[];      // 파일 이름 (NULL 종료)
+};
 
 ```
 
 ---
 
-### ▶ set-user-id / set-group-id
+### 디렉터리 내용 출력 예제 (list1.c)
 
-- 실행 파일에 **특정 권한**을 임시 부여함
+```c
+#include <stdio.h>
+#include <dirent.h>
 
-### ▶ set-user-id
+int main(int argc, char **argv) {
+  DIR *dp;
+  struct dirent *d;
+  char *dir = argc > 1 ? argv[1] : ".";
 
-```bash
-$ ls -l /bin/passwd
--rwsr-xr-x 1 root root ...
-
-```
-
-- 실행 시 유효 사용자 ID가 root로 설정됨
-- `chmod 4755 파일` 또는 `chmod u+s 파일` 로 설정
-
-### ▶ set-group-id
-
-```bash
-$ ls -l /bin/wall
--r-xr-sr-x 1 root tty ...
-
-```
-
-- 실행 시 유효 그룹 ID가 해당 그룹으로 설정됨
-- `chmod 2755 파일` 또는 `chmod g+s 파일` 로 설정
-
----
-
-## ✅ 6.5 시그널과 프로세스
-
-### ▶ 시그널(Signal)이란?
-
-- 소프트웨어 인터럽트
-- 비정상 상황 또는 외부 이벤트 전달
-
-### ▶ 주요 시그널 종류
-
-| 시그널 | 의미 | 기본 동작 |
-| --- | --- | --- |
-| SIGINT | Ctrl-C 입력 | 종료 |
-| SIGTSTP | Ctrl-Z 입력 | 정지 |
-| SIGKILL | 강제 종료 (무조건 죽임) | 종료 |
-| SIGTERM | 일반적인 종료 요청 | 종료 |
-| SIGSTOP | 정지 요청 | 정지 |
-| SIGCONT | 정지된 프로세스 재개 | 계속 |
-| SIGCHLD | 자식 종료 알림 | 무시 |
-
-전체 시그널 리스트 보기:
-
-```bash
-$ kill -l
+  dp = opendir(dir);
+  if (dp == NULL) {
+    perror("opendir");
+    return 1;
+  }
+  while ((d = readdir(dp)) != NULL) {
+    printf("%s %lu\n", d->d_name, d->d_ino);
+  }
+  closedir(dp);
+  return 0;
+}
 
 ```
 
 ---
 
-### ▶ 시그널 보내기 - `kill`
+### 6.6 링크(Link)
 
-```bash
-$ kill -시그널 PID
-$ kill -SIGKILL 1234
-$ kill -STOP 1234
-$ kill -CONT 1234
-
-```
-
-> 지정하지 않으면 기본으로 SIGTERM이 전송됨
-> 
+- **하드 링크(Hard link)**
+    - 동일 파일의 i-node를 가리키는 또 다른 이름
+    - 같은 파일 시스템 내에서만 가능
+- **심볼릭 링크(Symbolic link, soft link)**
+    - 파일 경로명을 저장하는 특수 파일
+    - 다른 파일 시스템도 링크 가능
+    - `symlink()` 함수로 생성 가능
 
 ---
 
-## ✅ 핵심 요약
+### 링크 생성 함수
 
-| 항목 | 설명 |
-| --- | --- |
-| **프로세스** | 실행 중인 프로그램. PID와 PPID로 식별됨 |
-| **ps / pgrep** | 프로세스 상태 확인, 필터링 |
-| **fg / bg / jobs** | 전면/후면 작업 전환 제어 |
-| **nice / renice** | 프로세스 우선순위 조절 |
-| **UID / EUID** | 실제 ID와 권한에 관련된 유효 ID |
-| **setuid / setgid** | 실행 시 권한 임시 부여 |
-| **signal / kill** | 시그널을 통한 프로세스 제어 | 
+```c
+int link(const char *existing, const char *new);
+int symlink(const char *target, const char *linkpath);
+int unlink(const char *path);  // 링크 또는 파일 삭제
+
+```
+
+---
+
+### 심볼릭 링크 내용 읽기
+
+```c
+ssize_t readlink(const char *path, char *buf, size_t bufsiz);
+
+```
+
+---
+
+### 핵심 정리
+
+- 유닉스 파일 시스템은 부트 블록, 슈퍼 블록, i-리스트(i-node), 데이터 블록 구조
+- i-node는 파일 메타데이터를 저장하는 중요한 자료구조
+- 커널 내 파일 입출력은 파일 디스크립터 배열, 열린 파일 테이블, 동적 i-node 테이블을 사용
+- 디렉터리는 파일 이름과 i-node 번호 쌍으로 구성된 특수 파일
+- 하드 링크와 심볼릭 링크는 파일을 참조하는 두 가지 방법
